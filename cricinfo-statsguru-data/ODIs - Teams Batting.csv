@@ -1,0 +1,13 @@
+﻿Country,Team Matches Played,Matches Won,Matches Lost,Matches Tied,Matches With No Result,Win/Loss Ratio,Avg Runs Per Wicket Batting,Avg Runs Per Six Balls Batting,Number Of Team Innings Batting,Highest Team Score Batting,Lowest Completed Score Batting
+England,709,351,326,8,24,1.076,30.61,4.84,704,444,86
+Australia,912,556,313,9,34,1.776,34.08,4.98,902,434,70
+South Africa,589,362,205,6,16,1.765,35.56,5.09,586,439,69
+West Indies,777,385,356,9,27,1.081,29.96,4.73,768,372,54
+New Zealand,744,334,365,6,39,0.915,28.99,4.79,729,402,64
+India,939,483,409,7,40,1.180,33.32,5.03,928,418,54
+Pakistan,889,469,394,8,18,1.190,30.33,4.80,888,385,43
+Sri Lanka,816,376,399,5,36,0.942,29.58,4.88,801,443,43
+Zimbabwe,506,134,354,7,11,0.378,25.33,4.50,502,351,35
+Bangladesh,340,108,225,0,7,0.480,24.75,4.49,337,329,58
+Ireland,136,60,66,3,7,0.909,27.20,4.83,134,331,77
+Afghanistan,98,51,45,0,2,1.133,26.34,4.72,97,338,58

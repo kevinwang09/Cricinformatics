@@ -1,0 +1,262 @@
+---
+title: "Untitled"
+author: "Kevin Wang"
+date: "27/08/2018"
+output: html_document
+---
+
+# Loading packages
+```{r}
+library(tidyverse)
+library(janitor)
+library(ClassifyR)
+```
+
+
+# Loading data 
+```{r}
+rawBattingData = read_csv("cricinfo-statsguru-data/Test Matches - Batting.csv") %>% 
+  janitor::clean_names(case = "small_camel")
+
+glimpse(rawBattingData)
+
+
+rawBowlingData = read_csv("cricinfo-statsguru-data/Test Matches - Bowling.csv") %>% 
+  janitor::clean_names(case = "small_camel")
+
+glimpse(rawBowlingData)
+
+
+rawAllRounderData = read_csv("cricinfo-statsguru-data/Test Matches - All Round.csv") %>% 
+  janitor::clean_names(case = "small_camel")
+
+glimpse(rawAllRounderData)
+
+inningsThres = 40
+```
+
+# Cleaning data
+
+```{r}
+cleanedBattingData = rawBattingData %>% 
+  dplyr::mutate(
+    player = str_replace(player, " \\([^>]+\\)", ""),
+    inningsBatted = as.integer(inningsBatted),
+    notOuts = as.integer(notOuts), 
+    runsScored = as.numeric(runsScored),
+    battingAvg = as.numeric(battingAvg),
+    hundredsScored = as.integer(hundredsScored),
+    scoresOfFiftyOrMore = as.integer(scoresOfFiftyOrMore),
+    ducksScored = as.integer(ducksScored)
+  ) %>% 
+  dplyr::select(
+    -careerSpan, 
+    -highestInningsScore, 
+    -playerCount) %>% 
+  dplyr::filter(inningsBatted > inningsThres)
+
+glimpse(cleanedBattingData)
+```
+
+
+
+```{r}
+cleanedBowlingData = rawBowlingData %>% 
+  dplyr::mutate(
+    player = str_replace(player, " \\([^>]+\\)", ""),
+    inningsBowledIn = as.integer(inningsBowledIn), 
+    ballsBowled = as.integer(ballsBowled), 
+    runsConceded = as.integer(runsConceded), 
+    wicketsTaken = as.integer(wicketsTaken),
+    bowlingAvg = as.numeric(bowlingAvg),
+    economyRate = as.numeric(economyRate),
+    bowlingStrikeRate = as.numeric(bowlingStrikeRate),
+    fiveWicketsInAnInnings = as.integer(fiveWicketsInAnInnings),
+    tenWicketsInAMatch = as.integer(tenWicketsInAMatch),
+    isBowler = ifelse(wicketsTaken < 50, "Not bowler", "bowler")
+  ) %>% 
+  tidyr::separate(bestBowlingInAnInnings, 
+                  into = c("mostWicketsInnings", "mostWicketsInningsRuns"), 
+                  sep = "/") %>% 
+  tidyr::separate(bestBowlingInAMatch, 
+                  into = c("mostWicketsMatch", "mostWicketsMatchRuns"), 
+                  sep = "/") %>% 
+  na.omit() %>% 
+  dplyr::filter(inningsBowledIn > inningsThres)
+
+glimpse(cleanedBowlingData)
+```
+
+
+```{r}
+cleanedAllRounderData = rawAllRounderData %>% 
+  dplyr::mutate(
+    player = str_replace(player, " \\([^>]+\\)", "")
+    )
+```
+
+
+# Number batting data
+```{r}
+numBattingData = cleanedBattingData %>% 
+  dplyr::select_if(is.numeric) %>% 
+  bind_cols(cleanedBattingData %>% select(player)) %>% 
+  dplyr::mutate(
+    logRuns = log10(runsScored)
+  ) %>% 
+  dplyr::select(
+    -runsScored, 
+    -careerStart, 
+    -careerEnd
+  ) %>% 
+  dplyr::filter(
+    !is.infinite(logRuns)
+  ) %>% 
+  na.omit
+
+dim(numBattingData)
+
+numBattingMatrix = numBattingData %>% 
+  dplyr::select(-player) %>% 
+  as.data.frame %>% as.matrix %>% scale
+
+```
+
+
+# K means Clustering 
+```{r}
+kmeansObj = kmeans(x = numBattingMatrix, centers = 2)
+kmeansObj
+```
+
+# PCA
+```{r}
+pcaObj = prcomp(x = numBattingMatrix)
+
+
+library(gplots)
+venn(
+  list(
+    battingPlayers = numBattingData$player,
+    bowlingPlayers = cleanedBowlingData$player
+  )
+)
+
+pcaDataFrame = tibble(
+  pca1 = pcaObj$x[,1],
+  pca2 = pcaObj$x[,2],
+  player = numBattingData$player,
+  kmeans = as.factor(kmeansObj$cluster)
+) %>% 
+  dplyr::left_join(cleanedBowlingData, by = "player") %>% 
+  dplyr::mutate(
+    isBowler = coalesce(isBowler, "Not bowler")
+  )
+
+table(pcaDataFrame$isBowler, 
+      pcaDataFrame$kmeans)
+
+
+
+p1 = pcaDataFrame %>% 
+  ggplot(aes(x = pca1,
+             y = pca2,
+             colour = isBowler,
+             shape = kmeans,
+             label = player)) +
+  geom_point()
+
+
+library(plotly)
+
+plotly::ggplotly(p1)
+```
+
+
+# Supervised learning
+```{r}
+# DMresults <- ClassifyR::runTests(numBattingMatrix, 
+#                       classes = factor(pcaDataFrame$isBowler), 
+#                       datasetName = "Batting",
+#                       classificationName = "Different Means", 
+#                       permutations = 20, folds = 5,
+#                       seed = 2018, verbose = 1)
+# DMresults
+
+library(SmokyScotch)
+
+svmMultiResult = svmCV_multi(x = numBattingMatrix, 
+                             y = factor(pcaDataFrame$isBowler),
+                             nFolds = 5, nExp = 100,
+                             cores = 5)
+
+logitMultiResult = logitCV_multi(
+  x = data.frame(numBattingMatrix), 
+  y = as.integer(factor(pcaDataFrame$isBowler)) -1L,
+  nFolds = 5, nExp = 100,
+  cores = 5)
+
+rfMultiResult = rfCV_multi(
+  x = data.frame(numBattingMatrix), 
+  y = factor(pcaDataFrame$isBowler),
+  nFolds = 5, nExp = 100,
+  cores = 5)
+
+svmMultiError = svmMultiResult %>% purrr::map_dbl("svmMeanError")
+logitMultiError = logitMultiResult %>% purrr::map_dbl("logitMeanError")
+rfMultiError = rfMultiResult %>% purrr::map_dbl("rfMeanError")
+
+boxplot(
+  data.frame(svmMultiError, 
+             logitMultiError,
+             rfMultiError)
+)
+
+predictMatrix1 = purrr::map(svmMultiResult, "svmPredictOrderedVector") %>%
+  purrr::map(as.character) %>%
+  do.call(rbind,.)
+
+predictMatrix2 = purrr::map(logitMultiResult, "logitPredictIntOrderedVector") %>%
+  purrr::map(as.character) %>%
+  do.call(rbind,.)
+
+predictMatrix3 = purrr::map(rfMultiResult, "rfPredictOrderedVector") %>%
+  purrr::map(as.character) %>%
+  do.call(rbind,.)
+
+classifierMatrix = rbind(
+  binaryClassScores(y = factor(pcaDataFrame$isBowler), 
+                    predictMatrix = predictMatrix1),
+  binaryClassScores(y = as.integer(as.factor(pcaDataFrame$isBowler)) -1L, 
+                    predictMatrix = predictMatrix2),
+  binaryClassScores(y = factor(pcaDataFrame$isBowler),
+                    predictMatrix = predictMatrix3)
+)
+rownames(classifierMatrix) = c("SVM", "Logit", "RF")
+
+compareBinaryClassResults(
+  y = factor(pcaDataFrame$isBowler), 
+  classifierMatrix)
+```
+
+
+
+```{r}
+svmData = cbind(pcaDataFrame, 
+                svmScore = binaryClassScores(y = factor(pcaDataFrame$isBowler), 
+                                             predictMatrix = predictMatrix1)) %>% mutate(isAllRounder = player %in% cleanedAllRounderData$player)
+
+
+
+svmData %>% 
+  group_by(isAllRounder) %>% 
+  summarise(
+    meanSvmScore = mean(svmScore)
+  )
+
+svmData %>% 
+  ggplot(aes(x = isAllRounder,
+             y = svmScore)) +
+  geom_boxplot()
+```
+
