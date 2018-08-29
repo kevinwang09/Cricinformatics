@@ -1,0 +1,89 @@
+---
+title: "Partnership network"
+author: "Kevin Wang"
+date: "29/08/2018"
+output: html_document
+---
+
+# Loading packages
+```{r}
+library(tidyverse)
+library(visNetwork)
+library(janitor)
+```
+
+# Loading data
+```{r}
+rawPartnerData = read_csv("cricinfo-statsguru-data/Test Matches - Partnerships.csv") %>% 
+  janitor::clean_names(case = "small_camel")
+
+glimpse(rawPartnerData)
+
+```
+
+# Cleaning data
+```{r}
+cleanedPartnerData = rawPartnerData %>% 
+  tidyr::separate(col = partners, 
+                  into = c("player1", "player2"), 
+                  sep = ", ") %>% 
+  dplyr::mutate(
+    highestPartnership = highestPartnership %>% str_replace("\\*", "") %>% as.integer,
+    avgPartnershipPerDismissal = as.numeric(avgPartnershipPerDismissal)
+    ) %>% 
+  dplyr::filter(numberOfPartnerships > 20, country %in% c("England", "Australia"))
+
+glimpse(cleanedPartnerData)
+
+hist(cleanedPartnerData$numberOfPartnerships)
+```
+
+
+# Constructing network
+```{r}
+uniquePlayers = cleanedPartnerData %>% 
+  dplyr::select(player1, player2, country) %>% 
+  tidyr::gather(player12, 
+                player, -country) %>% 
+  dplyr::select(-player12) %>% 
+  dplyr::arrange(player) %>% 
+  group_by(player) %>% 
+  dplyr::summarise(
+    freq = n(),
+    country = first(country)
+  ) %>% 
+  dplyr::filter(freq > 1)
+
+uniquePlayers
+
+nodes = uniquePlayers %>% 
+  dplyr::transmute(
+    id = player, 
+    group = country, 
+    label = ifelse(freq > 5, player, ""),
+    value = freq,
+    font.size = 50,
+    title = player
+  )
+  
+edges = cleanedPartnerData %>% 
+  dplyr::transmute(
+    from = player1, 
+    to = player2,
+    value = totalPartnershipRuns,
+    label = avgPartnershipPerDismissal
+  )
+  # dplyr::filter(from %in% uniquePlayers$player | to %in% uniquePlayers$player)
+
+visNetwork(nodes, edges, height = "1000px", width = "1000px") %>% 
+    visOptions(highlightNearest = TRUE, 
+               nodesIdSelection = TRUE) %>% 
+  visInteraction(navigationButtons = TRUE) %>% 
+  visLegend()
+```
+
+
+```{r}
+sessionInfo()
+```
+
