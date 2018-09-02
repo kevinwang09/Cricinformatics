@@ -75,12 +75,23 @@ edges = cleanedPartnerData %>%
   )
   # dplyr::filter(from %in% uniquePlayers$player | to %in% uniquePlayers$player)
 
-visNetwork(nodes, edges, height = "1000px", width = "1000px") %>% 
+ausEngNetwork = visNetwork(nodes, edges, height = "1000px", width = "1000px") %>% 
     visOptions(highlightNearest = TRUE, 
                nodesIdSelection = TRUE) %>% 
   visInteraction(navigationButtons = TRUE) %>% 
   visLegend()
+
+ausEngNetwork
 ```
+
+
+```{r}
+# save(ausEngNetwork, 
+#      file = "RData/ausEngNetwork_01_Sep_2018.RData")
+visSave(ausEngNetwork, file = "ausEngNetwork_01_Sep_2018.html")
+```
+
+
 
 
 ```{r}
