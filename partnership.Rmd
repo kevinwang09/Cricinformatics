@@ -31,17 +31,23 @@ cleanedPartnerData = rawPartnerData %>%
     highestPartnership = highestPartnership %>% str_replace("\\*", "") %>% as.integer,
     avgPartnershipPerDismissal = as.numeric(avgPartnershipPerDismissal)
     ) %>% 
-  dplyr::filter(numberOfPartnerships > 20, country %in% c("England", "Australia"))
+  dplyr::filter(country %in% c("England", "Australia"))
 
 glimpse(cleanedPartnerData)
 
 hist(cleanedPartnerData$numberOfPartnerships)
+
+save(cleanedPartnerData, file = "RData/cleanedPartnershipData.RData")
 ```
+
 
 
 # Constructing network
 ```{r}
-uniquePlayers = cleanedPartnerData %>% 
+networkData = cleanedPartnerData %>% 
+  dplyr::filter(numberOfPartnerships > 20)
+
+uniquePlayers = networkData %>% 
   dplyr::select(player1, player2, country) %>% 
   tidyr::gather(player12, 
                 player, -country) %>% 
@@ -66,7 +72,7 @@ nodes = uniquePlayers %>%
     title = player
   )
   
-edges = cleanedPartnerData %>% 
+edges = networkData %>% 
   dplyr::transmute(
     from = player1, 
     to = player2,
@@ -82,6 +88,7 @@ ausEngNetwork = visNetwork(nodes, edges, height = "1000px", width = "1000px") %>
   visLegend()
 
 ausEngNetwork
+
 ```
 
 

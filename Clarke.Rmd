@@ -1,0 +1,98 @@
+---
+title: "Clarke"
+author: "Kevin Wang"
+date: "25/09/2018"
+output: html_document
+---
+
+# Loading packages
+```{r}
+library(tidyverse)
+library(visNetwork)
+library(janitor)
+```
+
+# Loading data
+```{r}
+rawPartnerData = read_csv("cricinfo-statsguru-data/Test Matches - Partnerships.csv") %>% 
+  janitor::clean_names(case = "small_camel")
+
+glimpse(rawPartnerData)
+
+```
+
+# Cleaning data
+```{r}
+cleanedPartnerData = rawPartnerData %>% 
+  tidyr::separate(col = partners, 
+                  into = c("player1", "player2"), 
+                  sep = ", ") %>% 
+  dplyr::mutate(
+    highestPartnership = highestPartnership %>% str_replace("\\*", "") %>% as.integer,
+    avgPartnershipPerDismissal = as.numeric(avgPartnershipPerDismissal)
+  ) %>% 
+  dplyr::filter(country %in% c("England", "Australia"))
+
+glimpse(cleanedPartnerData)
+
+hist(cleanedPartnerData$numberOfPartnerships)
+```
+
+# Clarke
+```{r}
+# clarkePartners = cleanedPartnerData %>%
+#   dplyr::filter(str_detect(player1, "MJ Clarke")|
+#                   str_detect(player2, "MJ Clarke")) 
+
+clarkePartners = cleanedPartnerData %>%
+  dplyr::filter(str_detect(player1, "MJ Clarke")|
+                  str_detect(player2, "MJ Clarke")) 
+
+# nodes = tibble::tibble(
+#     id = unique(c(clarkePartners$player1, clarkePartners$player2)),
+#     label = unique(c(clarkePartners$player1, clarkePartners$player2)),
+#     font.size = 20,
+#     title = unique(c(clarkePartners$player1, clarkePartners$player2))
+#   )
+
+
+nodes = clarkePartners %>% 
+  dplyr::select(player2, numberOfPartnerships) %>% 
+  dplyr::transmute(
+    id = player2, 
+    label = ifelse(numberOfPartnerships > 20, id, ""),
+    value = numberOfPartnerships/5,
+    font.size = 20
+  ) %>% 
+  dplyr::bind_rows(
+    tibble(
+      id = "MJ Clarke",
+      player = "MJ Clarke",
+      label = "MJ Clarke", 
+      value = 80, 
+      font.size = 30
+    )
+  ) %>% 
+  dplyr::distinct(id, .keep_all = TRUE)
+  
+edges = clarkePartners %>% 
+  dplyr::transmute(
+    from = player1, 
+    to = player2,
+    value = totalPartnershipRuns/3,
+    label = avgPartnershipPerDismissal
+  )
+
+
+
+
+clarkeNetwork = visNetwork(nodes, edges, height = "1000px", width = "1000px") %>% 
+    visOptions(highlightNearest = TRUE,
+               nodesIdSelection = TRUE) %>%
+  visInteraction(navigationButtons = TRUE) %>% 
+  visPhysics(repulsion = list(nodeDistance = 100)) %>% 
+  visLegend()
+
+clarkeNetwork
+```
+

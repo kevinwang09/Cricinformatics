@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Batting"
 author: "Kevin Wang"
 date: "27/08/2018"
 output: html_document
@@ -37,6 +37,8 @@ inningsThres = 40
 
 # Cleaning data
 
+
+## Batting data
 ```{r}
 cleanedBattingData = rawBattingData %>% 
   dplyr::mutate(
@@ -59,7 +61,7 @@ glimpse(cleanedBattingData)
 ```
 
 
-
+## Bowling data
 ```{r}
 cleanedBowlingData = rawBowlingData %>% 
   dplyr::mutate(
@@ -87,16 +89,74 @@ cleanedBowlingData = rawBowlingData %>%
 glimpse(cleanedBowlingData)
 ```
 
-
+## All rounder data
 ```{r}
 cleanedAllRounderData = rawAllRounderData %>% 
   dplyr::mutate(
     player = str_replace(player, " \\([^>]+\\)", "")
-    )
+  )
 ```
 
 
-# Number batting data
+# Monocle
+```{r}
+library(monocle)
+
+monocle_batting = cleanedBattingData
+#Do not run
+monocle_matrix = as.matrix(as.data.frame(monocle_batting %>% dplyr::select_if(is.numeric))) %>% t
+colnames(monocle_matrix) = 1:ncol(monocle_matrix)
+monocle_pData = new("AnnotatedDataFrame", 
+                    as.data.frame(
+                      monocle_batting %>%
+                        dplyr::left_join(cleanedBowlingData, by = "player") %>% 
+                        dplyr::mutate(
+                          isBowler = coalesce(isBowler, "Not bowler")
+                        )
+                      
+                      
+                    ))
+
+identical(colnames(monocle_matrix), rownames(monocle_pData))
+
+
+monocle_fData_pre = data.frame(gene_short_name = rownames(monocle_matrix))
+rownames(monocle_fData_pre) = monocle_fData_pre$gene_short_name
+monocle_fData = new("AnnotatedDataFrame", 
+                    data = monocle_fData_pre)
+identical(rownames(monocle_fData), rownames(monocle_matrix))
+
+
+cricket <- newCellDataSet(
+  monocle_matrix,
+  phenoData = monocle_pData,
+  featureData = monocle_fData,
+  expressionFamily=negbinomial.size())
+
+cricket <- estimateSizeFactors(cricket)
+cricket <- estimateDispersions(cricket)
+
+diff_test_res <- differentialGeneTest(cricket,
+                                      fullModelFormulaStr = "~isBowler")
+ordering_genes <- row.names (subset(diff_test_res, qval < 0.01))
+cricket <- setOrderingFilter(cricket, ordering_genes)
+plot_ordering_genes(cricket)
+
+cricket <- reduceDimension(cricket, max_components = 2,
+    method = 'DDRTree')
+
+cricket <- orderCells(cricket)
+
+tmp = plot_cell_trajectory(cricket, 
+                           color_by = "isBowler")
+  # geom_text(aes(label = player), size = 1)
+
+tmp
+plotly::ggplotly(tmp)
+```
+
+
+# Numeric batting data
 ```{r}
 numBattingData = cleanedBattingData %>% 
   dplyr::select_if(is.numeric) %>% 
@@ -118,9 +178,10 @@ dim(numBattingData)
 
 numBattingMatrix = numBattingData %>% 
   dplyr::select(-player) %>% 
-  as.data.frame %>% as.matrix %>% scale
+  as.data.frame %>% as.matrix
 
 ```
+
 
 
 # K means Clustering 
@@ -173,6 +234,42 @@ plotly::ggplotly(p1)
 ```
 
 
+# Full logistic regression
+```{r}
+logitData1 = cleanedBattingData %>% 
+  dplyr::transmute(player, notOuts, 
+                   battingAvg, highestInningsScoreNum, ducksScored) %>% 
+  dplyr::left_join(cleanedBowlingData %>% dplyr::select(player, isBowler), by = "player") %>% 
+  dplyr::mutate(
+    isBowler = coalesce(isBowler, "Not bowler") %>% as.factor(),
+    isBatsman = ifelse(isBowler == "bowler", 0L, 1L),
+    highestInningsScoreNum = as.numeric(highestInningsScoreNum)
+  ) 
+
+logitData2 = logitData1 %>% dplyr::select(-player, -isBowler) %>% na.omit()
+
+logitData2 %>% 
+  ggplot(aes(x = factor(isBatsman), y = battingAvg)) +
+  geom_boxplot()
+
+
+fullLogit = glm(isBatsman ~ ., family = "binomial", data = logitData2)
+
+fullLogit %>% 
+  broom::tidy() %>% 
+  cleanDigits() %>% DT::datatable()
+
+
+logitObsData = cbind(logitData1, probBatsman = fullLogit$fitted.values) %>% 
+  dplyr::mutate(isAllrounder = player %in% cleanedAllRounderData$player)
+
+logitObsData %>% 
+  dplyr::filter(
+    player %in% c("SK Warne", "GD McGrath", "DG Bradman", "GS Sobers", "MJ Clarke")
+  )
+```
+
+
 # Supervised learning
 ```{r}
 # DMresults <- ClassifyR::runTests(numBattingMatrix, 
@@ -182,6 +279,9 @@ plotly::ggplotly(p1)
 #                       permutations = 20, folds = 5,
 #                       seed = 2018, verbose = 1)
 # DMresults
+
+
+
 
 library(SmokyScotch)
 
@@ -196,20 +296,21 @@ logitMultiResult = logitCV_multi(
   nFolds = 5, nExp = 100,
   cores = 5)
 
-rfMultiResult = rfCV_multi(
-  x = data.frame(numBattingMatrix), 
-  y = factor(pcaDataFrame$isBowler),
-  nFolds = 5, nExp = 100,
-  cores = 5)
+# rfMultiResult = rfCV_multi(
+#   x = data.frame(numBattingMatrix), 
+#   y = factor(pcaDataFrame$isBowler),
+#   nFolds = 5, nExp = 100,
+#   cores = 5)
 
 svmMultiError = svmMultiResult %>% purrr::map_dbl("svmMeanError")
 logitMultiError = logitMultiResult %>% purrr::map_dbl("logitMeanError")
-rfMultiError = rfMultiResult %>% purrr::map_dbl("rfMeanError")
+# rfMultiError = rfMultiResult %>% purrr::map_dbl("rfMeanError")
 
 boxplot(
   data.frame(svmMultiError, 
-             logitMultiError,
-             rfMultiError)
+             logitMultiError
+             # rfMultiError
+             )
 )
 
 predictMatrix1 = purrr::map(svmMultiResult, "svmPredictOrderedVector") %>%
@@ -220,24 +321,27 @@ predictMatrix2 = purrr::map(logitMultiResult, "logitPredictIntOrderedVector") %>
   purrr::map(as.character) %>%
   do.call(rbind,.)
 
-predictMatrix3 = purrr::map(rfMultiResult, "rfPredictOrderedVector") %>%
-  purrr::map(as.character) %>%
-  do.call(rbind,.)
+# predictMatrix3 = purrr::map(rfMultiResult, "rfPredictOrderedVector") %>%
+#   purrr::map(as.character) %>%
+#   do.call(rbind,.)
 
 classifierMatrix = rbind(
   binaryClassScores(y = factor(pcaDataFrame$isBowler), 
                     predictMatrix = predictMatrix1),
   binaryClassScores(y = as.integer(as.factor(pcaDataFrame$isBowler)) -1L, 
-                    predictMatrix = predictMatrix2),
-  binaryClassScores(y = factor(pcaDataFrame$isBowler),
-                    predictMatrix = predictMatrix3)
+                    predictMatrix = predictMatrix2)
+  # binaryClassScores(y = factor(pcaDataFrame$isBowler),
+  #                   predictMatrix = predictMatrix3)
 )
-rownames(classifierMatrix) = c("SVM", "Logit", "RF")
+rownames(classifierMatrix) = c("SVM", "Logit")
 
 compareBinaryClassResults(
   y = factor(pcaDataFrame$isBowler), 
   classifierMatrix)
 ```
+
+
+
 
 
 
@@ -258,5 +362,19 @@ svmData %>%
   ggplot(aes(x = isAllRounder,
              y = svmScore)) +
   geom_boxplot()
+```
+
+
+
+# Plottiing
+```{r}
+cleanedBattingData %>% 
+  ggplot(aes(x = battingAvg,
+             y = as.numeric(highestInningsScoreNum))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_classic(18) +
+  labs(x = "Batting average",
+       y = "Highest score")
 ```
 
