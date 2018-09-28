@@ -10,6 +10,7 @@
 library(shiny)
 library(visNetwork)
 library(tidyverse)
+load("cleanedPartnershipData.RData")
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {

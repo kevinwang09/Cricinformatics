@@ -8,6 +8,7 @@
 #
 
 library(shiny)
+library(visNetwork)
 
 # Define UI for application that draws a histogram
 shinyUI(
@@ -16,6 +17,6 @@ shinyUI(
                 label = "Partnership end year",
                 min = 1930L, max = 2018L, value = 1930L,
                 step = 1),
-    visNetworkOutput("network_proxy_nodes", height = "1000px")
+    visNetwork::visNetworkOutput("network_proxy_nodes", height = "1000px")
   )
 )

@@ -10,6 +10,7 @@ output: html_document
 library(tidyverse)
 library(janitor)
 library(ClassifyR)
+library(SmokyScotch)
 ```
 
 
@@ -103,9 +104,9 @@ cleanedAllRounderData = rawAllRounderData %>%
 library(monocle)
 
 monocle_batting = cleanedBattingData
-#Do not run
 monocle_matrix = as.matrix(as.data.frame(monocle_batting %>% dplyr::select_if(is.numeric))) %>% t
-colnames(monocle_matrix) = 1:ncol(monocle_matrix)
+
+colnames(monocle_matrix) = cleanedBattingData$player
 monocle_pData = new("AnnotatedDataFrame", 
                     as.data.frame(
                       monocle_batting %>%
@@ -113,9 +114,9 @@ monocle_pData = new("AnnotatedDataFrame",
                         dplyr::mutate(
                           isBowler = coalesce(isBowler, "Not bowler")
                         )
-                      
-                      
                     ))
+
+rownames(monocle_pData) = cleanedBattingData$player
 
 identical(colnames(monocle_matrix), rownames(monocle_pData))
 
@@ -148,7 +149,8 @@ cricket <- reduceDimension(cricket, max_components = 2,
 cricket <- orderCells(cricket)
 
 tmp = plot_cell_trajectory(cricket, 
-                           color_by = "isBowler")
+                           color_by = "isBowler", 
+                           show_cell_names = TRUE, cell_name_size = 3)
   # geom_text(aes(label = player), size = 1)
 
 tmp
