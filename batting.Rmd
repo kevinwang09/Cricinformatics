@@ -150,7 +150,8 @@ cricket <- orderCells(cricket)
 
 tmp = plot_cell_trajectory(cricket, 
                            color_by = "isBowler", 
-                           show_cell_names = TRUE, cell_name_size = 3)
+                           show_cell_names = TRUE, 
+                           cell_name_size = 3)
   # geom_text(aes(label = player), size = 1)
 
 tmp

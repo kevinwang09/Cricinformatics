@@ -18,7 +18,8 @@ shinyServer(function(input, output) {
     
     networkData = cleanedPartnerData %>% 
       dplyr::filter(numberOfPartnerships >= 20,
-                    partnershipCareerEnd <= input$endYear)
+                    partnershipCareerEnd <= input$InputYears[2],
+                    partnershipCareerEnd >= input$InputYears[1])
     
     uniquePlayers = networkData %>% 
       dplyr::select(player1, player2, country) %>% 
@@ -39,7 +40,7 @@ shinyServer(function(input, output) {
       dplyr::transmute(
         id = player, 
         group = country, 
-        label = ifelse(freq > quantile(freq, 0.9), player, ""),
+        label = ifelse(freq > quantile(freq, 0.75), player, ""),
         value = freq*10,
         font.size = 50,
         title = player,

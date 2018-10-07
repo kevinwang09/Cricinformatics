@@ -13,9 +13,9 @@ library(visNetwork)
 # Define UI for application that draws a histogram
 shinyUI(
   fluidPage(
-    sliderInput(inputId = "endYear",
-                label = "Partnership end year",
-                min = 1930L, max = 2018L, value = 1930L,
+    sliderInput(inputId = "InputYears",
+                label = "Partnership spans",
+                min = 1930L, max = 2018L, value = c(1930L, 1940L),
                 step = 1),
     visNetwork::visNetworkOutput("network_proxy_nodes", height = "1000px")
   )

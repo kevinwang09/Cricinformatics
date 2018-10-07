@@ -5,8 +5,8 @@ account: gauss17gon
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 472051
-bundleId: 1608119
+bundleId: 1619211
 url: https://gauss17gon.shinyapps.io/partnershipShiny/
-when: 1538009698.77143
+when: 1538526383.05915
 asMultiple: FALSE
 asStatic: FALSE
