@@ -11,7 +11,7 @@ I always love watching cricket and wonder if we can move the statistics commonly
 
 ## Presentation slides
 
-Slides for my presentation for Sydney University Mathematics Society is available [here](https://kevinwang09.github.io/cricket_analysis/assets/player/KeynoteDHTMLPlayer.html#0).
+Slides for my presentation for Sydney University Mathematics Society is available [here](https://kevinwang09.github.io/Cricinformatics/assets/player/KeynoteDHTMLPlayer.html#0).
 
 
 ## Results
