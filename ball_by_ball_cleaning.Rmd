@@ -1,0 +1,169 @@
+---
+title: "Cleaning ball by ball data"
+author: "Kevin Wang"
+date: "`r paste0('Initiated on 2020 Aug 22, compiled on ', format(Sys.time(), '%Y %b %d'))`"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 12
+    fig_width: 12
+    toc: yes
+    number_sections: true
+    toc_depth: 3
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# Summary
+
+# Loading 
+
+## packages
+```{r}
+library(tidyverse)
+library(yaml)
+library(furrr)
+
+plan(multisession, workers = 5)
+```
+
+## data
+
+```{r}
+raw1 = yaml::read_yaml("data/ball_by_ball_raw/1000851.yaml")
+```
+
+# Exploring a single file
+
+## First level: meta information and innings
+```{r}
+raw1 %>% names
+raw1$meta
+raw1$info
+raw1$innings %>% length ## 4 innings
+```
+
+## Second level and down: deliveries
+
+```{r}
+raw1$innings[[1]]$`1st innings` %>% length
+
+raw1$innings[[1]]$`1st innings`$team
+
+raw1$innings[[1]]$`1st innings`$deliveries %>% length
+raw1$innings[[1]]$`1st innings`$deliveries %>% purrr::map_int(~ .x[[1]] %>% length)
+table(raw1$innings[[1]]$`1st innings`$deliveries %>% purrr::map_int(~ .x[[1]] %>% length))
+
+raw1$innings[[1]]$`1st innings`$deliveries[[1]]
+raw1$innings[[1]]$`1st innings`$deliveries[[1]]$`0.1`
+raw1$innings[[1]]$`1st innings`$deliveries[[384]]$`63.4`
+```
+
+Conclusion: Considerable cleaning is needed. Notice that the deliveries always has `runs` but not always with `wicket`. 
+
+```{r}
+which5 = which(raw1$innings[[1]]$`1st innings`$deliveries %>% 
+                 purrr::map_int(~ .x[[1]] %>% length) == 5)
+
+purrr::map(which5, 
+           .f = ~ raw1$innings[[1]]$`1st innings`$deliveries[.x][[1]][[1]] %>% names)
+
+purrr::map(which5, 
+           .f = ~ raw1$innings[[1]]$`1st innings`$deliveries[.x][[1]][[1]])
+```
+
+
+# Cleaning a single innings
+```{r}
+one_delivery = raw1$innings[[1]]$`1st innings`$deliveries[[1]][[1]] ## Runs
+one_delivery = raw1$innings[[1]]$`1st innings`$deliveries[[384]]$`63.4` ## Extras
+one_delivery = raw1$innings[[1]]$`1st innings`$deliveries[[367]]$`60.5` ## Wicket
+
+one_delivery_tbl = function(one_delivery){
+  result = tibble(batsman = one_delivery$batsman, 
+                  bowler = one_delivery$bowler, 
+                  non_striker = one_delivery$non_striker,
+                  runs_batsman = one_delivery$runs$batsman, 
+                  runs_extras = one_delivery$runs$extras,
+                  runs_total = one_delivery$runs$total)
+  
+  if("wicket" %in% names(one_delivery)){
+    wicket_tbl = tibble(
+      wicket_kind = one_delivery$wicket$kind,
+      wicket_out = one_delivery$wicket$player_out)
+    result = bind_cols(result, wicket_tbl)}
+  
+  if("extras" %in% names(one_delivery)){
+    extras_tbl = tibble(
+      extras_kind = names(one_delivery$extras))
+    result = bind_cols(result, extras_tbl)}
+  
+  return(result)
+}
+
+one_inns_tbl = function(one_inns){
+  inns_tbl = purrr::map_dfr(
+    .x = one_inns$deliveries,
+    .f = ~ dplyr::mutate(
+      one_delivery_tbl(.x[[1]]),
+      ball = names(.x)))
+  return(inns_tbl)
+}
+
+# one_inns_tbl(raw1$innings[[1]]$`1st innings`)
+
+one_match_tbl = function(match){
+  innings_num = match$innings %>% purrr::map_chr(names)
+  innings_tbl = purrr::map(
+    .x = match$innings, 
+    .f = ~ dplyr::mutate(
+      one_inns_tbl(.x[[1]])))
+  names(innings_tbl) = innings_num
+  innings_tbl = innings_tbl %>% bind_rows(.id = "innings")
+  
+  info_tbl = tibble(
+    venue = match$info$venue,
+    team1 = match$info$teams[1],
+    team2 = match$info$teams[2],
+    date = paste(match$info$dates, collapse = "--"),
+    gender = match$info$gender,
+    toss_winner = match$info$toss$winner,
+    toss_decision = match$info$toss$decision,
+    match_type = match$info$match_type,
+    outcome = as_tibble(as.data.frame(match$info$outcome)))
+  
+  result = info_tbl %>% 
+    dplyr::mutate(innings_tbl = list(innings_tbl))
+  
+  return(result)
+}
+
+one_match_tbl(raw1)
+```
+
+# Processing all data
+```{r}
+files_tbl = tibble(
+  filename = list.files("data/ball_by_ball_raw/", pattern = ".yaml", full.names = TRUE)) %>% 
+  # slice(1:5) %>%
+  dplyr::mutate(
+    rawdata = purrr::map(filename, ~ yaml::read_yaml(.x)), 
+    match_tbl = furrr::future_map(rawdata, one_match_tbl,
+                                  .progress = TRUE))
+
+files_tbl = files_tbl %>% dplyr::select(-rawdata)
+```
+
+# Saving
+
+```{r}
+saveRDS(files_tbl, file = "data/RData/ball_by_ball_22_Aug_2020.rds")
+```
+
+
+# Session Info
+```{r}
+sessioninfo::session_info()
+```
+
