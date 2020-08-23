@@ -1,0 +1,173 @@
+---
+title: "Kevin Wang's template"
+author: "Kevin Wang"
+date: "`r paste0('Initiated on 2020 Aug 22, compiled on ', format(Sys.time(), '%Y %b %d'))`"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 12
+    fig_width: 12
+    toc: yes
+    number_sections: true
+    toc_depth: 3
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# Summary
+
+# Loading 
+
+## packages
+```{r}
+library(tidyverse)
+library(survminer)
+library(survival)
+library(patchwork)
+library(ggsci)
+
+
+theme_set(
+  theme_classic(18) +
+    theme(legend.position = "bottom", 
+          panel.grid.minor = element_blank()))
+```
+
+## data
+
+```{r}
+clean_test_batting_inngings = readr::read_csv("data/clean_test_batting_inngings.csv") %>% 
+  dplyr::mutate(runs_num = runs %>% stringr::str_extract("\\-*\\d+\\.*\\d*") %>% as.integer(),
+                not_out = runs %>% stringr::str_detect("[*]"),
+                dead = !not_out)
+
+glimpse(clean_test_batting_inngings)
+```
+
+# Visualise KM plot for selected players
+```{r}
+selected_players = clean_test_batting_inngings %>% 
+  dplyr::filter(player_name %in% c("MJ Clarke", "SPD Smith", "RT Ponting", "SR Waugh"))
+
+selected_players_df =  selected_players %>% 
+  dplyr::transmute(player_name, 
+                   runs_num, 
+                   dead) %>% 
+  as.data.frame()
+
+fit = survfit(Surv(runs_num, dead) ~ player_name, data = selected_players_df)
+
+survminer::ggsurvplot(
+  fit = fit, 
+  data = selected_players_df, 
+  pval = TRUE, palette = "Set1")
+```
+
+
+# Also make a survival plot for all players to verify the hypothesis that you are more likely to get out in the first 30 balls faced. 
+
+```{r}
+fit_bf = survfit(Surv(balls_faced, dead) ~ 1, data = clean_test_batting_inngings)
+
+plot_bf = survminer::ggsurvplot(
+  fit = fit_bf,
+  data = clean_test_batting_inngings,
+  palette = "Set1",
+  surv.median.line = "hv")$plot + 
+  labs(x = "Balls faced before getting out",
+       title = "Balls faced survival plot") +
+  scale_x_continuous(breaks = c(30, 100, 200, 400, 600, 800))
+```
+
+
+
+```{r, fig.height = 10, fig.width = 16}
+fit_runs = survfit(Surv(runs_num, dead) ~ 1, data = clean_test_batting_inngings)
+
+plot_runs = survminer::ggsurvplot(
+  fit = fit_runs,
+  data = clean_test_batting_inngings,
+  palette = "Set1",
+  surv.median.line = "hv")$plot +
+  labs(x = "Runs scored before getting out",
+       title = "Runs scored survival plot") +
+  scale_x_continuous(breaks = c(30, 100, 200, 400, 600, 800))
+
+plot_bf + plot_runs
+```
+
+
+# Logistic model 
+
+
+The logic here is the following: we use the `out` as the binary response variable and `balls_faced` as the continuous predictor. We want to find out what are the chances that certain players get out after facing certain number of balls. 
+
+```{r}
+library(lme4)
+library(sjPlot)
+
+clean_test_batting_inngings_complete = clean_test_batting_inngings %>% 
+  dplyr::mutate(dead = dead %>% as.integer) %>% 
+  dplyr::filter(complete.cases(balls_faced), 
+                complete.cases(runs_num),
+                complete.cases(dead))
+
+clean_test_batting_inngings_complete
+
+M1 = glm(dead ~ runs_num + balls_faced + fours + sixes + pos + inns, 
+         family = "binomial", data = clean_test_batting_inngings_complete)
+
+M1 %>% summary
+
+list_M1_plots = plot_model(M1, type = "eff")
+patchwork::wrap_plots(list_M1_plots)
+```
+
+
+```{r}
+pos_tbl = clean_test_batting_inngings_complete %>% 
+  dplyr::filter(pos <= 10) %>% 
+  dplyr::mutate(pos = factor(pos))
+
+M2 = glm(dead ~ balls_faced * pos + mins * pos, 
+         family = "binomial", data = pos_tbl)
+
+summary(M2)
+
+list_M2_plots = plot_model(M2, type = "int")
+  # scale_colour_d3() +
+  # scale_fill_d3()
+
+list_M2_plots
+
+list_M2_plots[[1]] + 
+  scale_x_log10(limits = c(1, 400)) + 
+  geom_vline(xintercept = 120, linetype = 2) +
+  scale_colour_d3() +
+  scale_fill_d3() +
+  labs(x = "Balls faced before getting out", 
+       y = "Prob. of getting out",
+       colour = "Batting position")
+
+# plot_model(M2, type = "int")[[2]] + scale_x_log10()
+```
+
+
+
+# Logistic mixed model on survival 
+
+```{r, eval = FALSE}
+M2 = glmer(dead ~ runs_num + balls_faced + fours + sixes + pos + inns + country + (1|player_name), 
+         family = "binomial", data = clean_test_batting_inngings_complete)
+
+M2 %>% summary
+plot_model(M2, type = "eff")
+```
+
+
+# Session Info
+```{r}
+sessioninfo::session_info()
+```
+
