@@ -31,7 +31,8 @@ plan(multisession, workers = 5)
 ## data
 
 ```{r}
-raw1 = yaml::read_yaml("data/ball_by_ball_raw/1000851.yaml")
+# raw1 = yaml::read_yaml("data/ball_by_ball_raw/1000851.yaml")
+raw1 = yaml::read_yaml("data/ball_by_ball_raw/1020041.yaml")
 ```
 
 # Exploring a single file
@@ -112,6 +113,30 @@ one_inns_tbl = function(one_inns){
 }
 
 # one_inns_tbl(raw1$innings[[1]]$`1st innings`)
+extract_na = function(x, name){
+  res = x[[name]]
+  if(is.null(res)){
+    return(NA)
+  } else {
+    return(res)
+  }
+}
+
+
+make_outcome = function(outcome){
+  if("winner" %in% names(outcome)){
+    result = list(
+      winning_team = outcome %>% extract_na("winner"),
+      winning_type = outcome %>% extract_na("by") %>% names %>% paste(collapse = ","),
+      winning_margin = outcome %>% extract_na("by") %>% unlist() %>% as.vector() %>% paste(collapse = ","))
+  } else {
+    result = list(
+      winning_team = outcome %>% extract_na("result"),
+      winning_type = outcome %>% extract_na("result"),
+      winning_margin = outcome %>% extract_na("result"))
+  }
+  return(result)
+}
 
 one_match_tbl = function(match){
   innings_num = match$innings %>% purrr::map_chr(names)
@@ -131,15 +156,17 @@ one_match_tbl = function(match){
     toss_winner = match$info$toss$winner,
     toss_decision = match$info$toss$decision,
     match_type = match$info$match_type,
-    outcome = as_tibble(as.data.frame(match$info$outcome)))
+    winning_team = match$info$outcome %>% make_outcome() %>% extract_na("winning_team"),
+    winning_type = match$info$outcome %>% make_outcome() %>% extract_na("winning_type"),
+    winning_margin = match$info$outcome %>% make_outcome() %>% extract_na("winning_margin"))
   
-  result = info_tbl %>% 
+  result = info_tbl %>%
     dplyr::mutate(innings_tbl = list(innings_tbl))
   
   return(result)
 }
 
-one_match_tbl(raw1)
+tmp = one_match_tbl(raw1)
 ```
 
 # Processing all data
@@ -152,7 +179,8 @@ files_tbl = tibble(
     match_tbl = furrr::future_map(rawdata, one_match_tbl,
                                   .progress = TRUE))
 
-files_tbl = files_tbl %>% dplyr::select(-rawdata)
+files_tbl = files_tbl %>% 
+  dplyr::select(-rawdata)
 ```
 
 # Saving
