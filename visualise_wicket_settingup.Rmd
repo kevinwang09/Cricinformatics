@@ -23,23 +23,104 @@ editor_options:
 ## packages
 ```{r}
 library(tidyverse)
+
+theme_set(
+  theme_classic(18) +
+    theme(legend.position = "bottom", 
+          panel.grid.minor = element_blank()))
 ```
 
 ## data
 
 ```{r}
-files_tbl = readRDS("data/RData/ball_by_ball_22_Aug_2020.rds")
+raw_tbl = readRDS("data/RData/ball_by_ball_22_Aug_2020.rds")
 ```
 
 
-# Cleaning
-```{r}
-files_tbl %>% 
-  slice(1:10) %>% 
-  unnest(match_tbl)
+# Visualise single match
 
-files_tbl %>% slice(11) %>% unnest(match_tbl)
-files_tbl %>% slice(11) %>% pull(match_tbl)
+```{r}
+test1 = raw_tbl %>% slice(1) %>% unnest(match_tbl) %>% unnest(innings_tbl) %>% 
+  tidyr::separate(
+    col = "ball", 
+    into = c("over", "over_ball"), 
+    sep = "[.]", remove = FALSE) %>% 
+  dplyr::mutate(
+    ball = as_factor(ball), 
+    over = over %>% as.integer,
+    over_ball = over_ball %>% as.integer(),
+    wicket = ifelse(wicket_out %>% complete.cases, "yes", "no") %>% factor())
+
+test1 %>% glimpse()
+
+test1 %>% 
+  ggplot(aes(x = over, y = runs_batsman,
+             colour = wicket,
+             alpha = wicket, 
+             size = wicket)) +
+  geom_point() +
+  scale_y_continuous(breaks = 0:6) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c("yes" = 1, "no" = 0.05)) +
+  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
+  facet_wrap(~innings, scales = "free_x")
+```
+
+
+## NM Lyon
+
+```{r}
+lyon = test1 %>% 
+  dplyr::filter(bowler == "NM Lyon")
+
+lyon %>% 
+  ggplot(aes(x = over, y = runs_batsman,
+             colour = wicket,
+             alpha = wicket, 
+             size = wicket)) +
+  geom_point() +
+  scale_y_continuous(breaks = 0:6) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
+  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
+  facet_wrap(~innings, scales = "free_x")
+
+
+lyon %>% 
+  ggplot(aes(x = over_ball, y = runs_batsman,
+             colour = wicket,
+             alpha = wicket, 
+             size = wicket)) +
+  geom_point() +
+  scale_y_continuous(breaks = 0:6) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
+  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
+  facet_wrap(~innings, scales = "free_x")
+```
+
+# Which ball is more likely to take wicket?
+
+Maybe use a series of piecharts.
+```{r}
+test1 %>% 
+  ggplot(aes(x = over_ball, y = runs_batsman,
+             colour = wicket,
+             alpha = wicket, 
+             size = wicket)) +
+  geom_point() +
+  scale_y_continuous(breaks = 0:6) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
+  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
+  facet_wrap(~innings, scales = "free_x")
+```
+
+## Logistic model
+
+```{r}
+glm(wicket ~ factor(over_ball), family = "binomial", data = test1) %>% 
+  summary()
 ```
 
 

@@ -25,14 +25,14 @@ library(tidyverse)
 library(yaml)
 library(furrr)
 
-plan(multisession, workers = 5)
+plan(multisession, workers = 20)
 ```
 
 ## data
 
 ```{r}
-# raw1 = yaml::read_yaml("data/ball_by_ball_raw/1000851.yaml")
-raw1 = yaml::read_yaml("data/ball_by_ball_raw/1020041.yaml")
+raw1 = yaml::read_yaml("data/ball_by_ball_raw/1000851.yaml")
+# raw1 = yaml::read_yaml("data/ball_by_ball_raw/1020041.yaml")
 ```
 
 # Exploring a single file
@@ -109,10 +109,17 @@ one_inns_tbl = function(one_inns){
     .f = ~ dplyr::mutate(
       one_delivery_tbl(.x[[1]]),
       ball = names(.x)))
+  
+  inns_tbl = inns_tbl %>% 
+    dplyr::mutate(
+      batting_team = one_inns$team)
+  
   return(inns_tbl)
 }
 
-# one_inns_tbl(raw1$innings[[1]]$`1st innings`)
+one_delivery_tbl(one_delivery)
+one_inns_tbl(one_inns = raw1$innings[[1]]$`1st innings`)
+
 extract_na = function(x, name){
   res = x[[name]]
   if(is.null(res)){
@@ -176,8 +183,7 @@ files_tbl = tibble(
   # slice(1:5) %>%
   dplyr::mutate(
     rawdata = purrr::map(filename, ~ yaml::read_yaml(.x)), 
-    match_tbl = furrr::future_map(rawdata, one_match_tbl,
-                                  .progress = TRUE))
+    match_tbl = furrr::future_map(rawdata, one_match_tbl))
 
 files_tbl = files_tbl %>% 
   dplyr::select(-rawdata)
