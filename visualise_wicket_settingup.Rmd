@@ -24,6 +24,7 @@ editor_options:
 ```{r}
 library(tidyverse)
 library(sjPlot)
+library(ggsci)
 
 theme_set(
   theme_classic(18) +
@@ -137,7 +138,9 @@ plot_model(M1, type = "pred", digits = 4)
 
 # Logistic model on all tests
 ```{r}
-all_tests = raw_tbl %>% unnest(match_tbl) %>% unnest(innings_tbl) %>% 
+all_tests = raw_tbl %>% unnest(match_tbl) %>% 
+  dplyr::mutate(total_balls_match = purrr::map_int(innings_tbl, nrow)) %>% 
+  unnest(innings_tbl) %>% 
   clean_over_balls() %>% 
   dplyr::filter(over_ball <= 6)
 
@@ -145,7 +148,7 @@ M2 = glm(wicket ~ over + factor(over_ball), family = "binomial", data = all_test
 
 summary(M2)
 
-plot_model(M2, type = "pred", digits = 4)
+plot_model(M2, type = "pred", digits = 10)
 
 # qqnorm(M$residuals)
 # qqline(M$residuals)
@@ -159,6 +162,139 @@ M3 = glmer(wicket ~ over + factor(over_ball) + (1 | venue),
 
 plot_model(M3, type = "pred", digits = 4)
 ```
+
+# Building pressure 
+
+The hypothesis is that prior to taking wickets, batsmen are typically strangled to taking runs. 
+
+The following visualise the runs before taking wicket.
+
+```{r}
+# cum_balls_before_wkt = purrr::map(.x = which(all_tests$wicket == "yes"), .f = ~ seq(.x, 0, by = -1))
+
+where_wkts = which(all_tests$wicket == "yes")
+cum_balls_before_wkt = rep(NA, length(all_tests$wicket))
+last_wkt = 0
+for(wkt in where_wkts){
+  cum_balls_before_wkt[(last_wkt + 1L):wkt] = seq(wkt - last_wkt - 1L, 0L, by = -1)
+  last_wkt = wkt
+}
+
+pressure = all_tests %>% 
+  dplyr::mutate(
+    cum_all_wkt = cumsum(wicket == "yes"),
+    cum_balls_before_wkt = cum_balls_before_wkt) %>% 
+  group_by(filename, batting_team, innings) %>% 
+  dplyr::mutate(
+    cum_inns_wkt = cumsum(wicket == "yes")) %>% 
+  ungroup()
+
+# View(pressure %>% slice(1:100))
+
+pressure %>% 
+  dplyr::filter(filename == "data/ball_by_ball_raw//1000851.yaml") %>%
+  ggplot(aes(x = cum_balls_before_wkt, y = runs_total)) +
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(breaks = 0:6) +
+  scale_x_continuous(trans = "log1p", breaks = c(0:18))
+
+pressure_perc = pressure %>% 
+  dplyr::filter(cum_balls_before_wkt <= 18) %>% 
+  group_by(cum_balls_before_wkt, runs_total) %>% 
+  dplyr::tally() %>% 
+  dplyr::mutate(perc = n/sum(n)) %>% 
+  ungroup()
+
+pressure_perc %>% 
+  ggplot(aes(x = cum_balls_before_wkt, 
+             y = perc)) +
+  geom_col(aes(fill = factor(runs_total))) +
+  scale_fill_d3()
+
+pressure_perc %>% 
+  ggplot(aes(x = cum_balls_before_wkt, 
+             y = perc, colour = factor(runs_total))) +
+  geom_line(size = 1.5) +
+  scale_colour_d3() +
+  scale_x_continuous(breaks = c(1:10))
+```
+
+
+```{r}
+bowler_pressure = pressure %>% 
+  group_by(filename) %>% 
+  dplyr::mutate(wkt_bowler = ifelse(wicket == "yes", bowler, NA)) %>% 
+  tidyr::fill(wkt_bowler, .direction = "down") %>% 
+  ungroup() %>% 
+  group_by(wkt_bowler) %>% 
+  nest() %>% 
+  dplyr::mutate(total_balls = purrr::map_int(data, nrow))
+
+bowler_pressure_perc = bowler_pressure %>% 
+  dplyr::filter(complete.cases(wkt_bowler)) %>% 
+  ungroup() %>% 
+  # dplyr::filter(rank(desc(total_balls)) <= 50) %>%
+  dplyr::filter(rank(desc(total_balls)) <= 11 | wkt_bowler == "SR Watson") %>%
+  # dplyr::filter(rank(desc(total_balls)) <= 11 | wkt_bowler == "") %>%
+  # dplyr::filter(wkt_bowler %in% c("JM Anderson", "NM Lyon")) %>%
+  # dplyr::filter(rank(desc(total_balls)) <= 10) %>% 
+  unnest(data) %>% 
+  dplyr::filter(cum_balls_before_wkt <= 12, cum_balls_before_wkt > 0) %>% 
+  group_by(wkt_bowler, cum_balls_before_wkt, runs_total) %>% 
+  dplyr::tally() %>% 
+  dplyr::mutate(perc = n/sum(n)) %>% 
+  dplyr::filter(perc < 1) %>%
+  ungroup()
+
+
+bowler_pressure_perc %>%  
+  ggplot(aes(x = cum_balls_before_wkt, 
+             y = perc, 
+             colour = factor(runs_total),
+             group = interaction(runs_total, wkt_bowler)
+             )) +
+  geom_line(size = 0.5) +
+  scale_colour_d3() +
+  scale_x_continuous(breaks = c(0:12)) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  labs(x = "Num of runs before taking wicket", 
+       y = "Percentage averaged across 12 balls", 
+       colour = "Runs")
+
+bowler_pressure_perc %>% 
+  ggplot(aes(x = cum_balls_before_wkt, 
+             y = perc)) +
+  geom_col(aes(fill = factor(runs_total))) +
+  geom_hline(yintercept = 0.25) +
+  # geom_hline(yintercept = 0.12) +
+  scale_fill_d3() +
+  scale_x_continuous(breaks = c(0:12)) +
+  facet_wrap(~wkt_bowler) +
+  labs(x = "Num of runs before taking wicket", 
+       y = "Percentage averaged across 12 balls", 
+       fill = "Runs")
+```
+
+
+
+## What about the chance of a batsman facing the same bowler before taking a wicket
+
+```{r}
+pressure %>%
+  group_by(cum_all_wkt) %>%
+  summarise(
+    wkt_taking_bowler = mean(unique(bowler) == last(bowler))) %>%
+  ggplot(aes(x = wkt_taking_bowler)) +
+  geom_histogram()
+
+
+
+
+# M3 = glm(wicket ~ factor(over_ball) * cum_balls_before_wkt, family = "binomial", data = pressure)
+#
+# summary(M3)
+```
+
 
 
 # Session Info
