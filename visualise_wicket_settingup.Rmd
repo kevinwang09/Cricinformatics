@@ -1,5 +1,5 @@
 ---
-title: "Kevin Wang's template"
+title: "Building pressure before taking a wicket"
 author: "Kevin Wang"
 date: "`r paste0('Initiated on 2020 Aug 22, compiled on ', format(Sys.time(), '%Y %b %d'))`"
 output:
@@ -56,8 +56,9 @@ raw_tbl = readRDS("data/RData/ball_by_ball_22_Aug_2020.rds")
 ```
 
 
-# Visualise single match
+# Single match
 
+## When is wickets most likely to occur in an over
 ```{r}
 test1 = raw_tbl %>% slice(1) %>% unnest(match_tbl) %>% unnest(innings_tbl) %>% 
   clean_over_balls
@@ -65,7 +66,7 @@ test1 = raw_tbl %>% slice(1) %>% unnest(match_tbl) %>% unnest(innings_tbl) %>%
 test1 %>% glimpse()
 
 test1 %>% 
-  ggplot(aes(x = over, y = runs_batsman,
+  ggplot(aes(x = over_ball, y = runs_batsman,
              colour = wicket,
              alpha = wicket, 
              size = wicket)) +
@@ -77,78 +78,34 @@ test1 %>%
   facet_wrap(~innings, scales = "free_x")
 ```
 
-
-## NM Lyon
-
-```{r}
-lyon = test1 %>% 
-  dplyr::filter(bowler == "NM Lyon")
-
-lyon %>% 
-  ggplot(aes(x = over, y = runs_batsman,
-             colour = wicket,
-             alpha = wicket, 
-             size = wicket)) +
-  geom_point() +
-  scale_y_continuous(breaks = 0:6) +
-  scale_colour_brewer(palette = "Set1") +
-  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
-  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
-  facet_wrap(~innings, scales = "free_x")
-
-
-lyon %>% 
-  ggplot(aes(x = over_ball, y = runs_batsman,
-             colour = wicket,
-             alpha = wicket, 
-             size = wicket)) +
-  geom_point() +
-  scale_y_continuous(breaks = 0:6) +
-  scale_colour_brewer(palette = "Set1") +
-  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
-  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
-  facet_wrap(~innings, scales = "free_x")
-```
-
-# Which ball is more likely to take wicket?
-
-Maybe use a series of piecharts.
-```{r}
-test1 %>% 
-  ggplot(aes(x = over_ball, y = runs_batsman,
-             colour = wicket,
-             alpha = wicket, 
-             size = wicket)) +
-  geom_point() +
-  scale_y_continuous(breaks = 0:6) +
-  scale_colour_brewer(palette = "Set1") +
-  scale_alpha_manual(values = c("yes" = 1, "no" = 0.5)) +
-  scale_size_manual(values = c("yes" = 3, "no" = 1)) +
-  facet_wrap(~innings, scales = "free_x")
-```
-
-## Logistic model
+## Fitting a logistic model
 
 ```{r}
-M1 = glm(wicket ~ over + factor(over_ball), family = "binomial", data = test1 %>% dplyr::filter(over_ball <= 6))
+M1 = glm(wicket ~ factor(over_ball), family = "binomial", data = test1 %>% dplyr::filter(over_ball <= 6))
 summary(M1)
 
 plot_model(M1, type = "pred", digits = 4)
 ```
 
-# Logistic model on all tests
+# All test matches
+
+## Which ball of the over is more likely to take a wicket
 ```{r}
-all_tests = raw_tbl %>% unnest(match_tbl) %>% 
+all_tests = raw_tbl %>% unnest(match_tbl) %>%
+  # dplyr::sample_frac(size = 0.001) %>% 
   dplyr::mutate(total_balls_match = purrr::map_int(innings_tbl, nrow)) %>% 
   unnest(innings_tbl) %>% 
   clean_over_balls() %>% 
-  dplyr::filter(over_ball <= 6)
+  dplyr::filter(over_ball <= 6) %>% 
+  dplyr::mutate(over_ball = factor(over_ball))
 
-M2 = glm(wicket ~ over + factor(over_ball), family = "binomial", data = all_tests)
+
+M2 = glm(wicket ~ over_ball, family = "binomial", data = all_tests)
 
 summary(M2)
 
-plot_model(M2, type = "pred", digits = 10)
+plot_model(M2, type = "pred")$over_ball +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.001))
 
 # qqnorm(M$residuals)
 # qqline(M$residuals)
@@ -252,7 +209,7 @@ bowler_pressure_perc %>%
              y = perc, 
              colour = factor(runs_total),
              group = interaction(runs_total, wkt_bowler)
-             )) +
+  )) +
   geom_line(size = 0.5) +
   scale_colour_d3() +
   scale_x_continuous(breaks = c(0:12)) +
@@ -274,27 +231,6 @@ bowler_pressure_perc %>%
        y = "Percentage averaged across 12 balls", 
        fill = "Runs")
 ```
-
-
-
-## What about the chance of a batsman facing the same bowler before taking a wicket
-
-```{r}
-pressure %>%
-  group_by(cum_all_wkt) %>%
-  summarise(
-    wkt_taking_bowler = mean(unique(bowler) == last(bowler))) %>%
-  ggplot(aes(x = wkt_taking_bowler)) +
-  geom_histogram()
-
-
-
-
-# M3 = glm(wicket ~ factor(over_ball) * cum_balls_before_wkt, family = "binomial", data = pressure)
-#
-# summary(M3)
-```
-
 
 
 # Session Info
