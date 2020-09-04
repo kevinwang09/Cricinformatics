@@ -1,0 +1,17 @@
+---
+title: "Untitled"
+author: "Kevin Wang"
+date: "04/09/2020"
+output: html_document
+---
+
+# Loading
+
+## Packages
+```{r}
+library(tidyverse)
+library(xml2)
+library(rvest)
+```
+
+# Scrapping matches
