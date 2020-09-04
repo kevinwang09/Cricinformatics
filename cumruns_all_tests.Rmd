@@ -85,6 +85,123 @@ cumruns %>%
 
 # Clustering of matches and inngings based on wickets or cum-runs
 
+```{r, eval = FALSE}
+x = cumruns %>% 
+  ungroup() %>% 
+  dplyr::filter(filename == filename[1]) %>% 
+  dplyr::pull(runs_total)
+
+y = cumruns %>% 
+  ungroup() %>% 
+  dplyr::filter(filename == filename[10000]) %>% 
+  dplyr::pull(runs_total)
+
+length(x)
+length(y)
+
+library(dtw)
+tmp = dtw::dtw(x = x, y = y)
+# plot(tmp, type = "two")
+tmp$distance
+tmp$normalizedDistance
+```
+
+# Australia tests
+
+```{r, eval = FALSE}
+library(ggmap)
+
+venue_vec = cumruns$venue %>% unique
+
+all_venue = purrr::map(
+  .x = paste0(cumruns$venue %>% unique, " cricket ground") %>% head,
+  .f = ~ ggmap::geocode(location = .x, output = "more"))
+
+names(all_venue) = venue_vec
+all_venue = all_venue %>% bind_rows(.id = "venue")
+saveRDS(all_venue, file = "data/RData/all_venue.rds")
+```
+
+```{r}
+aus_tests = cumruns %>% 
+  ungroup() %>% 
+  dplyr::filter(team1 == "Australia" |
+                  team2 == "Australia") %>% 
+  dplyr::mutate(
+    australia = "Australia", 
+    opposite = case_when(
+      team1 == "Australia" ~ team2, 
+      team2 == "Australia" ~ team1),
+    year = str_sub(date, 1, 4))
+
+# aus_tests %>% 
+#     distinct(filename, opposite, year)
+
+aus_tests_cumruns = aus_tests %>% 
+  group_by(filename, opposite, year, innings) %>% 
+  nest()
+
+aus_tests_cumruns
+```
+
+
+## `dtw` against 3rd Ashes test in 2019
+
+```{r}
+ashes2019_cumruns = cumruns %>% 
+  filter(filename == "data/ball_by_ball_raw//1152848.yaml") %>% 
+  filter(innings == "4th innings") %>%
+  pull(cumruns)
+
+aus_tests_dtw = aus_tests_cumruns %>% 
+  dplyr::mutate(
+    dtw_dist = purrr::map_dbl(
+      .x = data,
+      .f = ~ dtw::dtw(x = .x$cumruns, y = ashes2019_cumruns)$normalizedDistance))
+```
+
+
+```{r}
+aus_tests_dtw %>% 
+  ggplot(aes(x = opposite, y = dtw_dist)) +
+  geom_boxplot() +
+  scale_y_log10()
+```
+
+
+
+# Visualise matches
+```{r}
+aus_tests_dtw %>% 
+  ungroup() %>%
+  # filter(filename %in% c("data/ball_by_ball_raw//1152848.yaml", "data/ball_by_ball_raw//518948.yaml")) %>% 
+  filter(innings == "4th innings") %>% 
+  filter(rank(dtw_dist) <= 5) %>% 
+  unnest(data) %>% 
+   ggplot(aes(x = innings_balls, y = cumruns,
+             group = interaction(filename, innings),
+             colour = innings)) +
+  geom_line(size = 1.5, alpha = 1) +
+  scale_colour_d3() + 
+  facet_wrap(winning_team~opposite, scales = "free")
+```
+
+# Clustering using distances
+
+```{r}
+aus_tests_cluster = aus_tests_dtw %>% 
+  dplyr::mutate(
+    winning_team = purrr::map_chr(data, ~ unique(.x$winning_team))) %>% 
+  ungroup() %>% 
+  dplyr::select(-data)
+
+aus_tests_cluster %>% 
+  ggplot(aes(x = winning_team, y = dtw_dist,
+             colour = innings)) +
+  geom_boxplot()
+```
+
+
 
 
 # Session Info

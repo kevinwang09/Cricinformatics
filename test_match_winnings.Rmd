@@ -1,0 +1,154 @@
+---
+title: "Kevin Wang's template"
+author: "Kevin Wang"
+date: "`r paste0('Initiated on 2020 Aug 22, compiled on ', format(Sys.time(), '%Y %b %d'))`"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 8
+    fig_width: 10
+    toc: yes
+    number_sections: true
+    toc_depth: 3
+    toc_float: yes
+    theme: paper
+editor_options: 
+  chunk_output_type: console
+---
+
+# Summary
+
+# Loading 
+
+## packages
+```{r}
+library(tidyverse)
+library(lubridate)
+
+theme_set(theme_classic(18) +
+            theme(legend.position = "bottom"))
+```
+
+## data
+
+```{r}
+test = readxl::read_excel("data/aus_match_list.xlsx") %>% 
+  dplyr::mutate(
+    date1 = Date %>% as.numeric() %>% janitor::excel_numeric_to_date() %>% ymd(),
+    date2 = Date %>% dmy()
+  ) %>% 
+  dplyr::transmute(
+    date = coalesce(date1, date2),
+    series = Series,
+    ground = Ground, 
+    result = Result,
+    aus_won = str_detect(result, "Australia won"),
+    aus_draw = str_detect(result, "Match Drawn|Match Tied"),
+    aus_lost = (!aus_won) & (!aus_draw),
+    year = date %>% year)
+
+test
+
+test_year = test %>% 
+  group_by(year) %>% 
+  dplyr::summarise(
+    aus_won = sum(aus_won),
+    aus_draw = sum(aus_draw),
+    aus_lost = sum(aus_lost)) %>% 
+  pivot_longer(cols = contains("aus"),
+               names_to = "result", 
+               values_to = "total")
+
+test_year
+```
+
+# GDP
+
+```{r}
+aus_gdp = read_csv("data/AUS_GDP_growth/API_NY.GDP.MKTP.KD.ZG_DS2_en_csv_v2_1307332.csv", skip = 3) %>% 
+  dplyr::filter(`Country Code` == "AUS") %>% 
+  dplyr::select(`1960`:`2019`) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "year", 
+               values_to = "gdp_growth") %>% 
+  na.omit() %>% 
+  dplyr::mutate(year = as.integer(year))
+
+aus_gdp
+```
+
+
+```{r}
+plotdf = test_year %>% 
+  left_join(aus_gdp, by = "year") %>% 
+  dplyr::mutate(year = as.integer(year))
+
+plotdf %>% 
+  filter(year > 2000) %>% 
+  ggplot(aes(x = year, y = total,
+             colour = result,
+             group = result)) +
+  # geom_point() +
+  geom_line() +
+  geom_line(aes(x = year + 1L, y = gdp_growth), colour = "black") +
+  facet_wrap(~result)
+```
+
+
+```{r}
+lost_plotdf = plotdf %>% 
+  filter(result == "aus_won", year >= 2000) %>% 
+  mutate(gdp_growth_lag = lag(gdp_growth, 2),
+         gdp_growth_lead = lead(gdp_growth, 2))
+
+library(lmtest)
+grangertest(x = lost_plotdf$total, lost_plotdf$gdp_growth)
+grangertest(x = lost_plotdf$total, lost_plotdf$gdp_growth_lead)
+
+library(forecast)
+library(ggfortify)
+ggCcf(x = lost_plotdf$total, y = lost_plotdf$gdp_growth)
+
+library(ggrepel)
+
+lost_plotdf %>% 
+  ggplot(aes(x = total, y = gdp_growth_lead)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm") + 
+  ggpubr::stat_cor(label.x = 3) +
+  labs(x = "No. of Test matches won by Australia (men's team) since 2000",
+       y = "Australian annual GDP growth (2 year lead)", 
+       title = "BREAKING NEWS!",
+       subtitle = "Australian cricket result predicts GDP growth! (p < 0.01)")
+
+
+lost_plotdf %>% 
+  ggplot(aes(x = total, y = gdp_growth_lead)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor(label.x = 3) +
+  geom_text_repel(aes(label = year)) +
+  labs(x = "No. of Test matches won by Australia (men's team) since 2000",
+       y = "Australian annual GDP growth (2 year lead)", 
+       title = "Actually, more like p-hacking...")
+
+plotdf %>% 
+  filter(result == "aus_won", year >= 1980) %>% 
+  mutate(gdp_growth_lag = lag(gdp_growth, 2),
+         gdp_growth_lead = lead(gdp_growth, 2)) %>% 
+  ggplot(aes(x = total, y = gdp_growth_lead)) +
+  geom_point(size = 3) +
+  geom_text_repel(aes(label = year)) +
+  geom_smooth(method = "lm") +
+  ggpubr::stat_cor(label.x = 8) +
+  labs(x = "No. of Test matches won by Australia (men's team) since 1980",
+       y = "Australian annual GDP growth (2 year lead)", 
+       title = "...through selective omission of unfavourable info.")
+```
+
+
+# Session Info
+```{r}
+sessioninfo::session_info()
+```
+
